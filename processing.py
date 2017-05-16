@@ -2,6 +2,7 @@ import shelve
 import pandas as pd
 from pandas import DataFrame
 import numpy as np
+import random
 
 try:
     from nltk.sentiment.vader import SentimentIntensityAnalyzer
@@ -19,11 +20,11 @@ def _calculate_languages_ratios(text):
     Calculate probability of given text to be written in several languages and
     return a dictionary that looks like {'french': 2, 'spanish': 4, 'english': 0}
 
-    @param text: Text whose language want to be detected
-    @type text: str
+    :param text: Text whose language want to be detected
+    :type text: str
 
-    @return: Dictionary with languages and unique stopwords seen in analyzed text
-    @rtype: dict
+    :return: Dictionary with languages and unique stopwords seen in analyzed text
+    :rtype: dict
     """
 
     languages_ratios = {}
@@ -51,11 +52,11 @@ def detect_language(text):
 
     list of available languages: stopwords.fileids()
 
-    @param text: Text whose language want to be detected
-    @type text: str
+    :param text: Text whose language want to be detected
+    :type text: str
 
-    @return: Most scored language guessed
-    @rtype: str
+    :return: Most scored language guessed
+    :rtype: str
     """
 
     ratios = _calculate_languages_ratios(text)
@@ -63,12 +64,12 @@ def detect_language(text):
     # TODO: add something to measure accuracy.. I'd rather return None if not sure
 
     most_rated_language = max(ratios, key=ratios.get)
-    print('language: {}'.format(most_rated_language))
+    # print('language: {}'.format(most_rated_language))
 
     return most_rated_language
 
 
-def get_sentiment_score(text):
+def get_sentiment_score(sid, text):
 
     # break text down to sentences
     sentences = tokenize.sent_tokenize(text)
@@ -85,67 +86,116 @@ def get_sentiment_score(text):
     return avg_compound_score
 
 
+def get_stars_from_scores(compound_score):
+
+    assert (-1 <= compound_score <= 1) or np.isnan(compound_score), \
+        'Invalid compound score {} (should be between -1 and 1)'.format(compound_score)
+
+    if compound_score <= -0.7: stars = 1  # bottom 0.3
+    elif -0.7 < compound_score <= -0.4: stars = 2  # 0.3
+    elif -0.4 < compound_score <= 0.5: stars = 3  # 0.8
+    elif 0.4 <= compound_score < 0.7: stars = 4  # 0.3
+    else: stars = 5  # compound_score >= 0.7 top 0.3
+
+    return stars
+
+
 def store_on_shelve(data, name):
+    """
+    opens shelve file "df_reviews_processed" and stores data as name
+    :param data:
+    :param name:
+    :return:
+    """
     try:
-        with shelve.open('df_reviews') as db:
+        with shelve.open('df_reviews_processed') as db:
             db[name] = data
     except Exception as err:
         print(err)
     else:
         print('Data stored on shelve.')
 
-try:
-    # get dataframe from shelve
-    df_name = 'v1'+'processed'
-    with shelve.open('df_reviews') as db:
-        # df = db['sample_200']
-        # df = db['v1']
-        df = db[df_name]
-except Exception as err:
-    print(err)
-    print('Error while loading dataframe')
-else:
-    print('Imported dataframe')
 
-# print(df.head(5))
-# print(df.describe())
+def load_from_shelve(name, shelve_name='df_reviews'):
+
+    with shelve.open(shelve_name) as db:
+        _df = db[name]
+
+    return _df
 
 
-# detect language of review and add result as new column
-# ======================================================================================================================
-# print('Detecting language of reviews...')
-# df['language'] = df['review'].map(lambda rev: detect_language(rev))
-# print('Languages detected.')
+def pre_process(df_name):
 
-# store processed df in shelve
-store_on_shelve(df, df_name+'language_processed')
+    # load dataframe for pre-processing
+    # ==================================================================================================================
+    try:
+        # get dataframe from shelve
+        with shelve.open('df_reviews') as db:
+            df = db[df_name]
+    except KeyError:
+        with shelve.open('df_reviews') as db:
+            keys = list(db.keys())
+            print('Available keys:')
+            print(keys)
+    except Exception as err:
+        print(err)
+        print('Error while loading dataframe')
+    else:
+        print('Imported dataframe')
 
-# get only english comments
-df_english = df[df.language == 'english']
+        # detect language of review and add result as new column
+        # ==============================================================================================================
+        print('>>> Detecting language of reviews...')
+        df['language'] = df['review'].map(lambda rev: detect_language(rev))
 
-# process sentiment scores
-sid = SentimentIntensityAnalyzer()
-df['compound_score'] = df['review'].map(lambda rev: get_sentiment_score(rev))
+        # process sentiment scores and add result as new column
+        # ==============================================================================================================
+        print('>>> Processing sentiment scores...')
+        sid = SentimentIntensityAnalyzer()
+        df['compound_score'] = df['review'].map(lambda rev: get_sentiment_score(sid, rev))
 
-# store processed df in shelve
-store_on_shelve(df, df_name+'sentiment_processed')
+        # define categories by compound score and add result as new column
+        # ==============================================================================================================
+        print('>>> Attributing starts to reviews...')
+        df['stars'] = df['compound_score'].map(lambda score: get_stars_from_scores(score))
 
-# define categories by compound score
-df_1star = df[df.compound_score <= -0.8]
-df_2star = df[-0.7 <= df.compound_score <= -0.4]
-df_3star = df[-0.3 <= df.compound_score <= 0.3]
-df_4star = df[0.4 <= df.compound_score <= 0.7]
-df_5star = df[df.compound_score >= 0.8]
+        # store processed df on shelve
+        # ==============================================================================================================
+        df_processed_name = df_name+'_processed'
+        store_on_shelve(df, df_name+'_processed')
+        print('Successfully processed {} (stored as {})'.format(df_name, df_processed_name))
 
-# get random sample from each category
-df_1star_sample = df_1star.sample(n=100)
-df_2star_sample = df_2star.sample(n=100)
-df_3star_sample = df_3star.sample(n=100)
-df_4star_sample = df_4star.sample(n=100)
-df_5star_sample = df_5star.sample(n=100)
+        return df
 
-print(df_1star_sample.head(10))
-print(df_2star_sample.head(10))
-print(df_3star_sample.head(10))
-print(df_4star_sample.head(10))
-print(df_5star_sample.head(10))
+
+if __name__ == '__main__':
+
+    df_name = 'v1'
+    df = pre_process(df_name)
+    # df = load_from_shelve('df_reviews_processed')
+
+    # get only english comments
+    df_english = df[df.language == 'english']
+    print(df_english.head(5))
+
+    sample_size = 100
+
+    gp = df_english.groupby('stars')
+
+    df_sampled = pd.DataFrame()
+    for i, key in enumerate(gp.groups):
+        # key 1 - 5 stars
+
+        sample = gp.groups[key]
+        n_samples = min(sample_size, len(gp.groups[key])-1)
+        random_index = random.sample(range(0, len(gp.groups[key])-1), n_samples)
+        selected_rows = [x for i, x in enumerate(sample) if i in random_index]
+
+        # select from original dataframe, using row id
+        selected = df_english.loc[selected_rows, :]
+
+        # append selection to sample
+        df_sampled = df_sampled.append(selected)
+
+    print(df_sampled.describe())
+    df_sampled.to_excel('sample_reviews2.xlsx', encoding='utf-8')
