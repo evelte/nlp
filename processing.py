@@ -3,6 +3,8 @@ import pandas as pd
 from pandas import DataFrame
 import numpy as np
 import random
+from optylon.db_setup import optylon_db
+from optylon.db_queries import get_apt_ids, get_airbnb_account_info
 
 try:
     from nltk.sentiment.vader import SentimentIntensityAnalyzer
@@ -93,7 +95,7 @@ def get_stars_from_scores(compound_score):
 
     if compound_score <= -0.7: stars = 1  # bottom 0.3
     elif -0.7 < compound_score <= -0.4: stars = 2  # 0.3
-    elif -0.4 < compound_score <= 0.5: stars = 3  # 0.8
+    elif -0.4 < compound_score < 0.4: stars = 3  # 0.8
     elif 0.4 <= compound_score < 0.7: stars = 4  # 0.3
     else: stars = 5  # compound_score >= 0.7 top 0.3
 
@@ -118,10 +120,15 @@ def store_on_shelve(data, name):
 
 def load_from_shelve(name, shelve_name='df_reviews'):
 
-    with shelve.open(shelve_name) as db:
-        _df = db[name]
-
-    return _df
+    try:
+        with shelve.open(shelve_name) as db:
+            _df = db[name]
+    except KeyError:
+        with shelve.open(shelve_name) as db:
+            keys = list(db.keys())
+        raise ValueError('Invalid key. Please select among {}.'.format(keys))
+    else:
+        return _df
 
 
 def pre_process(df_name):
@@ -135,11 +142,10 @@ def pre_process(df_name):
     except KeyError:
         with shelve.open('df_reviews') as db:
             keys = list(db.keys())
-            print('Available keys:')
-            print(keys)
+        raise ValueError('Invalid key. Please select among {}.'.format(keys))
     except Exception as err:
         print(err)
-        print('Error while loading dataframe')
+        raise RuntimeError('Error while loading dataframe')
     else:
         print('Imported dataframe')
 
@@ -162,7 +168,7 @@ def pre_process(df_name):
         # store processed df on shelve
         # ==============================================================================================================
         df_processed_name = df_name+'_processed'
-        store_on_shelve(df, df_name+'_processed')
+        store_on_shelve(df, df_processed_name)
         print('Successfully processed {} (stored as {})'.format(df_name, df_processed_name))
 
         return df
@@ -171,17 +177,33 @@ def pre_process(df_name):
 if __name__ == '__main__':
 
     df_name = 'v1'
-    df = pre_process(df_name)
-    # df = load_from_shelve('df_reviews_processed')
+    # df = pre_process(df_name)
+    df = load_from_shelve('v1_processed', shelve_name='df_reviews_processed')
 
     # get only english comments
     df_english = df[df.language == 'english']
-    print(df_english.head(5))
+
+    # reprocess stars
+    df_english['stars'] = df_english['compound_score'].map(lambda score: get_stars_from_scores(score))
+
+    # get airbnb ids of listings managed by us
+    db = optylon_db()
+    apt_ids = get_apt_ids('all', db, filter='active')
+
+    airbnb_ids = list(map(lambda apt_id: get_airbnb_account_info(apt_id, db)[0], apt_ids))
+    airbnb_ids = [x for x in airbnb_ids if x]
+    palacio = [15076308]
+    print('Our airbnb ids: {}'.format(airbnb_ids))
+
+    df_optylon = df_english[df_english.listing_id.isin(palacio)]
+    print(df_optylon.describe())
 
     sample_size = 100
 
-    gp = df_english.groupby('stars')
+    df_bottom = df_optylon[df_optylon.compound_score < -0.3]
+    df_optylon.to_excel('sample_reviews_placio.xlsx', encoding='utf-8')
 
+    gp = df_optylon.groupby('stars')
     df_sampled = pd.DataFrame()
     for i, key in enumerate(gp.groups):
         # key 1 - 5 stars
@@ -192,10 +214,10 @@ if __name__ == '__main__':
         selected_rows = [x for i, x in enumerate(sample) if i in random_index]
 
         # select from original dataframe, using row id
-        selected = df_english.loc[selected_rows, :]
+        selected = df_optylon.loc[selected_rows, :]
 
         # append selection to sample
         df_sampled = df_sampled.append(selected)
 
-    print(df_sampled.describe())
-    df_sampled.to_excel('sample_reviews2.xlsx', encoding='utf-8')
+    # print(df_sampled.describe())
+    # df_sampled.to_excel('sample_reviews_optylon.xlsx', encoding='utf-8')
