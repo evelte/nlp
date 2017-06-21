@@ -4,3 +4,6 @@ df_reviews
 
 # folder with data
 data/
+
+# folder with results
+results/
