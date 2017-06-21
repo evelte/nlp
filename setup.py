@@ -1,8 +1,8 @@
 from setuptools import setup
 
-setup(name='nlp_new',
+setup(name='nlp',
       version=version,
-      url='http://nlp_new.org',
+      url='http://nlp.org',
       description='',
       author='',
       license='',
