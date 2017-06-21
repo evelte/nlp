@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='nlp',
-      version=version,
+      version='0.1',
       url='http://nlp.org',
       description='',
       author='',
