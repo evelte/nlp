@@ -1,3 +1,6 @@
 df_reviews_old
 df_reviews
 *.xlsx
+
+# folder with data
+data/
