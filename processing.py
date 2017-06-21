@@ -174,7 +174,37 @@ def pre_process(df_name):
         return df
 
 
+def get_avg_score(listing_id):
+
+    df_name = 'v1'
+    # df = pre_process(df_name)
+    df = load_from_shelve('v1_processed', shelve_name='df_reviews_processed')
+    df_english = df[df.language == 'english']
+
+    df_id = df_english[df_english.listing_id.isin([listing_id])]
+
+    compound_scores = df_id.compound_score.values
+
+    avg_compound_score = np.nanmean(compound_scores)
+    std_compound_score = np.nanstd(compound_scores)
+
+    rating = get_stars_from_scores(avg_compound_score)
+    n_reviews = len(compound_scores)
+
+    return avg_compound_score, std_compound_score, rating, n_reviews
+
+
+
 if __name__ == '__main__':
+
+    # avg_compound_score, std_compound_score, rating, n_reviews = get_avg_score(14817933)
+    #
+    # print('Average compound score: {}'.format(avg_compound_score))
+    # print('Standard deviation: {}'.format(std_compound_score))
+    # print('Estimated rating: {}'.format(rating))
+    # print('Number of considered reviews: {}'.format(n_reviews))
+    #
+    # input()
 
     df_name = 'v1'
     # df = pre_process(df_name)
