@@ -7,3 +7,7 @@ data/
 
 # folder with results
 results/
+
+# ignore pycache
+nlp/__pycache__
+*.pyc
