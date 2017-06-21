@@ -1,0 +1,5 @@
+nlp.egg-info/PKG-INFO
+nlp.egg-info/SOURCES.txt
+nlp.egg-info/dependency_links.txt
+nlp.egg-info/not-zip-safe
+nlp.egg-info/top_level.txt
