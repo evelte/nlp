@@ -1,1 +1,5 @@
 # add instructions for your projects installation here
+
+# to install in editable mode, run this command from project root
+sudo pip install --editable .
+
